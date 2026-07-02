@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+<title>liteReader</title>
+<script src="jszip.min.js"></script>
+<script src="docx-preview.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --text: #222222;
+    --text-secondary: #666666;
+    --border: #e0e0e0;
+    --accent: #1976d2;
+    --shadow: rgba(0,0,0,0.1);
+}
+
+body.dark {
+    --bg: #121212;
+    --surface: #1e1e1e;
+    --text: #e0e0e0;
+    --text-secondary: #999999;
+    --border: #333333;
+    --accent: #64b5f6;
+    --shadow: rgba(0,0,0,0.3);
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+}
+
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 4px var(--shadow);
+    min-height: 48px;
+}
+
+.toolbar .title {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+}
+
+.toolbar button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.toolbar button:active {
+    opacity: 0.7;
+}
+
+.toolbar button.icon-btn {
+    padding: 6px 8px;
+    border: none;
+    font-size: 18px;
+}
+
+.doc-container {
+    display: inline-block;
+    min-width: 100%;
+    padding: 16px;
+}
+
+.doc-container .docx {
+    background: var(--surface);
+    border-radius: 4px;
+    padding: 24px 16px;
+    box-shadow: 0 1px 4px var(--shadow);
+}
+
+.doc-container .docx table {
+    border-collapse: collapse;
+    width: 100% !important;
+}
+
+.doc-container .docx td, .doc-container .docx th {
+    padding: 4px 8px;
+}
+
+.doc-container .docx-wrapper {
+    overflow: visible !important;
+    align-items: flex-start !important;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 32px;
+}
+
+.empty-state .icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.empty-state h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.empty-state p {
+    font-size: 14px;
+    max-width: 280px;
+    line-height: 1.5;
+}
+
+.loading {
+    display: none;
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+}
+
+.loading.active {
+    display: block;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.error {
+    display: none;
+    text-align: center;
+    padding: 40px;
+    color: #d32f2f;
+}
+
+.error.active {
+    display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+    body:not(.light) {
+        --bg: #121212;
+        --surface: #1e1e1e;
+        --text: #e0e0e0;
+        --text-secondary: #999999;
+        --border: #333333;
+        --accent: #64b5f6;
+        --shadow: rgba(0,0,0,0.3);
+    }
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+    <span class="title" id="docTitle">liteReader</span>
+    <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+    <button onclick="openFilePicker()" title="Open .docx file">📂 Open</button>
+</div>
+
+<div class="loading" id="loading">
+    <div class="spinner"></div>
+    <span>Loading document...</span>
+</div>
+
+<div class="error" id="error">
+    <p id="errorMsg">Failed to load document.</p>
+</div>
+
+<div class="empty-state" id="emptyState">
+    <div class="icon">📄</div>
+    <h2>No document open</h2>
+    <p>Tap "Open" to select a .docx file, or open a .docx file from your file manager.</p>
+</div>
+
+<div class="doc-container" id="docContainer" style="display:none"></div>
+
+<script>
+var docxData = null;
+
+function base64ToArrayBuffer(base64) {
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+function loadDocument(base64) {
+    if (!base64) return;
+
+    docxData = base64;
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('error').classList.remove('active');
+    document.getElementById('loading').classList.add('active');
+    document.getElementById('docContainer').style.display = 'none';
+
+    try {
+        var arrayBuffer = base64ToArrayBuffer(base64);
+        var container = document.getElementById('docContainer');
+        container.innerHTML = '';
+
+        docx.renderAsync(arrayBuffer, container, null, {
+            render: {
+                body: { borders: true },
+                table: { borders: true }
+            }
+        }).then(function () {
+            document.getElementById('loading').classList.remove('active');
+            document.getElementById('docContainer').style.display = 'block';
+
+            var titleEl = document.getElementById('docTitle');
+            if (titleEl.textContent === 'liteReader') {
+                titleEl.textContent = 'Document';
+            }
+        }).catch(function (err) {
+            document.getElementById('loading').classList.remove('active');
+            showError('Failed to render document: ' + err.message);
+        });
+    } catch (err) {
+        document.getElementById('loading').classList.remove('active');
+        showError('Error: ' + err.message);
+    }
+}
+
+function showError(msg) {
+    document.getElementById('errorMsg').textContent = msg;
+    document.getElementById('error').classList.add('active');
+}
+
+function openFilePicker() {
+    if (typeof Android !== 'undefined' && Android.pickFile) {
+        Android.pickFile();
+    }
+}
+
+function toggleTheme() {
+    var body = document.body;
+    var isDark = body.classList.toggle('dark');
+    body.classList.remove('light');
+    document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
+    if (typeof Android !== 'undefined' && Android.setDarkMode) {
+        Android.setDarkMode(isDark);
+    }
+}
+
+(function init() {
+    if (typeof Android !== 'undefined' && Android.isDarkMode) {
+        var dark = Android.isDarkMode();
+        if (dark) {
+            document.body.classList.add('dark');
+            document.getElementById('themeBtn').textContent = '☀️';
+        }
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+        document.getElementById('themeBtn').textContent = '☀️';
+    }
+})();
+</script>
+
+</body>
+</html>
