@@ -107,6 +107,10 @@ body {
     padding: 4px 8px;
 }
 
+section.docx {
+    max-width: 100% !important;
+}
+
 .doc-container .docx-wrapper {
     overflow: visible !important;
     align-items: flex-start !important;
@@ -193,6 +197,7 @@ body {
 <body>
 
 <div class="toolbar">
+    <button class="icon-btn" id="backBtn" onclick="goHome()" title="Back" style="display:none">&#8592;</button>
     <span class="title" id="docTitle">liteReader</span>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
     <button onclick="openFilePicker()" title="Open .docx file">📂 Open</button>
@@ -243,17 +248,18 @@ function loadDocument(base64) {
         container.innerHTML = '';
 
         docx.renderAsync(arrayBuffer, container, null, {
-            render: {
-                body: { borders: true },
-                table: { borders: true }
-            }
+            ignoreLastRenderedPageBreak: false,
+            breakPages: true,
+            ignoreWidth: true,
+            ignoreHeight: true
         }).then(function () {
             document.getElementById('loading').classList.remove('active');
             document.getElementById('docContainer').style.display = 'block';
+            document.getElementById('backBtn').style.display = '';
+            document.getElementById('docTitle').textContent = 'Document';
 
-            var titleEl = document.getElementById('docTitle');
-            if (titleEl.textContent === 'liteReader') {
-                titleEl.textContent = 'Document';
+            if (typeof Android !== 'undefined' && Android.setDocumentOpen) {
+                Android.setDocumentOpen(true);
             }
         }).catch(function (err) {
             document.getElementById('loading').classList.remove('active');
@@ -273,6 +279,19 @@ function showError(msg) {
 function openFilePicker() {
     if (typeof Android !== 'undefined' && Android.pickFile) {
         Android.pickFile();
+    }
+}
+
+function goHome() {
+    document.getElementById('docContainer').style.display = 'none';
+    document.getElementById('docContainer').innerHTML = '';
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('error').classList.remove('active');
+    document.getElementById('docTitle').textContent = 'liteReader';
+    document.getElementById('backBtn').style.display = 'none';
+
+    if (typeof Android !== 'undefined' && Android.setDocumentOpen) {
+        Android.setDocumentOpen(false);
     }
 }
 

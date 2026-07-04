@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var webView: WebView
     private var pendingDocxBytes: ByteArray? = null
+    private var isDocumentOpen = false
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -38,11 +39,10 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
+                if (isDocumentOpen) {
+                    webView.evaluateJavascript("goHome()", null)
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    finish()
                 }
             }
         })
@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
             domStorageEnabled = true
             builtInZoomControls = true
             displayZoomControls = false
-            useWideViewPort = true
+            useWideViewPort = false
         }
         webView.isHorizontalScrollBarEnabled = true
         webView.isVerticalScrollBarEnabled = true
@@ -125,6 +125,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     inner class DocxBridge {
+        @JavascriptInterface
+        fun setDocumentOpen(open: Boolean) {
+            isDocumentOpen = open
+        }
+
         @JavascriptInterface
         fun pickFile() {
             runOnUiThread { this@MainActivity.pickFile() }
